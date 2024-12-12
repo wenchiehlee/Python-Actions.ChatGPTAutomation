@@ -9,3 +9,5 @@ mytest/
 test.py
 .idea/
 chromedriver/
+chrome-testing/
+.DS_Store

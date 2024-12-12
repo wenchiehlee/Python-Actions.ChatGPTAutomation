@@ -352,12 +352,9 @@ class ChatGPTAutomation:
             # Wait for the response to be generated (20 seconds)
             time.sleep(self.DelayTimes.SEND_PROMPT_DELAY)
         except NoSuchElementException:
-            if self.check_message_sent():
-                return
-            else:
-                logging.ERROR(
-                    "Send message button does not found. if you see this error please create an issue in github!")
-                raise
+            logging.error(
+                "Send message button does not found. if you see this error please create an issue in github!")
+            raise
         except Exception as e:
             # Log the exception if any step in the process fails
             logging.error(f"Failed to send prompt to ChatGPT: {e}")
