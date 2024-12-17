@@ -31,6 +31,9 @@ class ChatGPTLocators:
     SEND_MSG_BTN = (By.XPATH, "//*[contains(@data-testid, 'send-button')]")
 
     GPT4_FILE_INPUT = (By.XPATH, '//input[@class="hidden"]')
+    
+    WEB_SEARCH_INPUT = (By.XPATH, '/html/body/div[1]/div[2]/main/div[1]/div[1]/div/div/div/div/article[1]/div/div/div/div/div/div/div/div/div[1]')
+    WEB_SEARCH_OUTPUT = (By.XPATH, '/html/body/div[1]/div[2]/main/div[1]/div[1]/div/div/div/div/article[1]/div/div/div/div/div/div/div/div/div[2]')
 
     WEB_SEARCH_BTN = (By.XPATH, '//*[@id="composer-background"]/div[2]/div[1]/div[2]/span/button')
     
@@ -40,6 +43,7 @@ class ChatGPTLocators:
     WEB_SEARCH_SOURCES_MORE = (By.XPATH, '/html/body/div[1]/div[3]/div/div/section/div[2]/div/div[2]/div[2]')
     
     CHAT_GPT_CONVERSION = (By.CSS_SELECTOR, 'div.text-base')
+    CHAT_GPT_RESPONSE_WEB_SEARCH = (By.CSS_SELECTOR, 'body > div.relative.flex.h-full.w-full.overflow-hidden.transition-colors.z-0 > div.relative.flex.h-full.max-w-full.flex-1.flex-col.overflow-hidden > main > div.composer-parent.flex.h-full.flex-col.focus-visible\:outline-0 > div.flex-1.overflow-hidden.\@container\/thread > div > div > div > div > article:nth-child(3) > div > div > div.group\/conversation-turn.relative.flex.w-full.min-w-0.flex-col.agent-turn > div > div.flex.max-w-full.flex-col.flex-grow > div > div > div')
     REGENERATE_BTN = (By.CSS_SELECTOR, 'button[as="button"]')
 
     FIRST_DELETE_BTN = (By.CSS_SELECTOR, 'button[data-state="closed"]')
@@ -137,7 +141,7 @@ class ChatGPTAutomation:
         self.chrome_path = chrome_path
         self.chrome_driver_path = chrome_driver_path
 
-        self.url = r"chatgpt.com"
+        self.url = r"https://chatgpt.com"
         free_port = self.find_available_port()
         self.launch_chrome_with_remote_debugging(free_port, self.url)
         # self.wait_for_human_verification()
@@ -508,20 +512,56 @@ class ChatGPTAutomation:
         """
         :return: returns a list of items, even items are the submitted questions (prompts) and odd items are chatgpt response
         """
-
+        print("Returning chatgpt conversation")
         elements = self.driver.find_elements(
             *ChatGPTLocators.CHAT_GPT_CONVERSION)
         del elements[::2]
+        print("Elements found: ",elements)
         chat_texts = [element.text for element in elements]
+        print("Chatgpt conversation returned")
         return chat_texts
+    
+    def get_response_from_web_search(self):
+        """
+        Extracts text from all nested <p> child tags under the web search response from ChatGPT.
+        Handles cases where text is wrapped in other tags like <strong>.
 
-    def save_conversation(self, file_name):
+        Returns:
+            list: A list of strings containing the combined text of all <p> tags.
+        """
+        try:
+            print("Attempting to locate the parent element for web search response.")
+            wait = WebDriverWait(self.driver, 10)
+            parent_element = wait.until(
+                EC.presence_of_element_located(ChatGPTLocators.CHAT_GPT_RESPONSE_WEB_SEARCH)
+            )
+            print("Parent element located successfully.")
+
+            print("Finding all <p> child elements within the parent element.")
+            p_tags = parent_element.find_elements(By.TAG_NAME, "p")
+            print(f"Number of <p> tags found: {len(p_tags)}")
+
+            print("Extracting and cleaning text from each <p> tag.")
+            extracted_texts = [p_tag.get_attribute('textContent').strip() for p_tag in p_tags]
+            print(f"Extracted texts: {extracted_texts}")
+
+            return extracted_texts
+
+        except TimeoutException:
+            print("Timeout while waiting for the parent element to appear.")
+            return []
+        except Exception as e:
+            print(f"Error while extracting text: {e}")
+            return []
+
+    def save_conversation(self, file_name, search_type="custom"):
         """
         Saves the entire conversation from the ChatGPT interface into a text file. The conversation is formatted
         with prompts and responses, separated by a custom delimiter.
 
         Args:
             file_name (str): The name of the file where the conversation will be saved.
+            search_type (str): The type of search that was performed. Can be "custom" or "web_search".
 
         Raises:
             IOError: If there is an issue writing to the file.
@@ -534,12 +574,19 @@ class ChatGPTAutomation:
                 os.makedirs(directory_name)
 
             delimiter = "----------------------------------------"
-            chatgpt_conversation = self.return_chatgpt_conversation()
-            del chatgpt_conversation[::2]
+            if search_type == "web_search":
+                chatgpt_conversation = self.get_response_from_web_search()
+                assert isinstance(chatgpt_conversation, list), f"chatgpt_conversation is expected to be a list but is{type(chatgpt_conversation)}"
+
+            else:
+                chatgpt_conversation = self.return_chatgpt_conversation()
+                del chatgpt_conversation[::2]
 
             with open(os.path.join(directory_name, file_name), "a") as file:
                 for i in range(0, len(chatgpt_conversation)):
+                    print("Adding the following to the file: ", chatgpt_conversation[i])
                     file.write(f"{chatgpt_conversation[i]}\n\n{delimiter}\n\n")
+                    print("Added delimiter")
 
         except FileNotFoundError as e:
             logging.error(f"File not found: {e}")
@@ -553,7 +600,8 @@ class ChatGPTAutomation:
         except Exception as e:
             logging.error(f"Unexpected error in saving conversation: {e}")
             raise
-
+        
+    
     def return_last_response(self):
         """
         Retrieves the text of the last ChatGPT response from a web interface using Selenium WebDriver.
@@ -680,6 +728,8 @@ class ChatGPTAutomation:
             WebDriverException: If there is an issue navigating to the ChatGPT page.
         """
         try:
+            # Print the URL being opened for debugging
+            print(f"Opening URL: {self.url.rstrip('/') + '/'}")
             # Navigate to the ChatGPT URL to start a new chat session
             self.driver.get(self.url + "/")
             # Print confirmation message
