@@ -26,11 +26,19 @@ logging.basicConfig(filename='chatgpt_automation.log', level=logging.INFO,
 class ChatGPTLocators:
     MSG_BOX_INPUT = (By.CSS_SELECTOR, 'textarea#prompt-textarea')
     MSG_BOX_INPUT2 = (By.TAG_NAME, 'textarea')
+    MSG_BOX_INPUT3 = (By.ID, 'prompt-textarea')
 
     SEND_MSG_BTN = (By.XPATH, "//*[contains(@data-testid, 'send-button')]")
 
     GPT4_FILE_INPUT = (By.XPATH, '//input[@class="hidden"]')
 
+    WEB_SEARCH_BTN = (By.XPATH, '//*[@id="composer-background"]/div[2]/div[1]/div[2]/span/button')
+    
+    SHOW_WEB_SEARCH_SOURCES_BTN = (By.CSS_SELECTOR, 'body > div.relative.flex.h-full.w-full.overflow-hidden.transition-colors.z-0 > div.relative.flex.h-full.max-w-full.flex-1.flex-col.overflow-hidden > main > div.composer-parent.flex.h-full.flex-col.focus-visible\:outline-0 > div.flex-1.overflow-hidden.\@container\/thread > div > div > div > div > article:nth-child(3) > div > div > div.group\/conversation-turn.relative.flex.w-full.min-w-0.flex-col.agent-turn > div > div.flex.max-w-full.flex-col.flex-grow > div > div > div > div.absolute.h-\[60px\] > button > div.flex.items-center.gap-0\.5.text-sm.font-medium')
+    
+    WEB_SEARCH_SOURCES_CITATIONS = (By.XPATH, '/html/body/div[1]/div[3]/div/div/section/div[2]/div/div[1]/div[2]')
+    WEB_SEARCH_SOURCES_MORE = (By.XPATH, '/html/body/div[1]/div[3]/div/div/section/div[2]/div/div[2]/div[2]')
+    
     CHAT_GPT_CONVERSION = (By.CSS_SELECTOR, 'div.text-base')
     REGENERATE_BTN = (By.CSS_SELECTOR, 'button[as="button"]')
 
@@ -147,6 +155,76 @@ class ChatGPTAutomation:
         :return: True if the login button is found, indicating the presence of the login page; False otherwise.
         """
         return bool(self.driver.find_elements(*ChatGPTLocators.LOGIN_BTN))
+    
+    def activate_web_search(self):
+        """
+        Activates the web search feature in ChatGPT.
+
+        Raises:
+            WebDriverException: If there is an issue interacting with the web elements or sending the prompt.
+        """
+        try:
+            self.driver.find_element(*ChatGPTLocators.WEB_SEARCH_BTN).click()
+        except Exception as e:
+            logging.error(f"Failed to activate web search: {e}")
+            raise WebDriverException(f"Error activating web search: {e}")
+    
+    def show_web_search_sources(self):
+        """
+        Shows the web search sources in ChatGPT by clicking the "Sources" button.
+
+        Raises:
+            WebDriverException: If there is an issue interacting with the web elements or sending the prompt.
+        """
+        try:
+            self.driver.find_element(*ChatGPTLocators.SHOW_WEB_SEARCH_SOURCES_BTN).click()
+        except Exception as e:
+            logging.error(f"Failed to show web search sources: {e}")
+            raise WebDriverException(f"Error showing web search sources: {e}")
+
+    
+    def get_links_from_sources(self,locator):
+        """
+        Retrieves all href links from <a> tags nested within the sidebar of sources section of the sources sidebar.
+
+        :param xpath: XPath of the sources sidebar container. Is either the "More" or "Citations" section.
+        :return: List of all href links of the citations.
+        """
+        try:
+            print(f"Attempting to locate {locator}")
+
+            # Locate the container using the provided XPath
+            container = WebDriverWait(self.driver, 20).until(
+                EC.presence_of_element_located(locator)
+            )
+            print("Container found in the DOM.")
+
+            # Ensure the container is visible
+            WebDriverWait(self.driver, 20).until(
+                EC.visibility_of(container)
+            )
+            print("Container is visible.")
+
+            # Find all <a> tags recursively within the container
+            all_links = container.find_elements(By.XPATH, ".//a")
+            print(f"Found {len(all_links)} <a> tags in the container.")
+
+            # Extract href attributes from the <a> tags
+            hrefs = [link.get_attribute("href") for link in all_links if link.get_attribute("href")]
+            print(f"Extracted {len(hrefs)} hrefs from the <a> tags.")
+
+            return hrefs
+
+        except Exception as e:
+            logging.error(f"Error extracting links: {e}")
+            print(f"Error extracting links: {e}")
+            return []
+
+    def get_all_citations(self):
+        return self.get_links_from_sources(ChatGPTLocators.WEB_SEARCH_SOURCES_CITATIONS)
+    
+    def get_more_links(self):
+        return self.get_links_from_sources(ChatGPTLocators.WEB_SEARCH_SOURCES_MORE)
 
     def login_using_gamil(self, email: str = None):
         if email is None:
@@ -325,6 +403,9 @@ class ChatGPTAutomation:
             # Raising a WebDriverException to indicate failure in WebDriver setup
             raise WebDriverException(f"Error initializing WebDriver: {e}")
 
+    def check_if_element_exists(self, locator):
+        return bool(self.driver.find_elements(*locator))
+
     def send_prompt_to_chatgpt(self, prompt):
         """
         Sends a message to ChatGPT via the web interface and waits for a response. This function
@@ -338,27 +419,19 @@ class ChatGPTAutomation:
         """
 
         try:
-            # Locate the input box element on the webpage
-            input_box = self.driver.find_element(
-                *ChatGPTLocators.MSG_BOX_INPUT)
+            # Wait for the input box to be visible and clickable
+            input_box = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable(ChatGPTLocators.MSG_BOX_INPUT3)
+            )
             input_box.click()
             self.type_in_selected_area(prompt, input_box)
-            # Simulate the key press action to send the prompt
             input_box.send_keys(Keys.ENTER)
-            # Locate and click the send button to submit the prompt
-            # old code for send message now press enter for send msg
-            # send_button = self.driver.find_element(*ChatGPTLocators.SEND_MSG_BTN)
-            # send_button.click()
-            # Wait for the response to be generated (20 seconds)
             time.sleep(self.DelayTimes.SEND_PROMPT_DELAY)
-        except NoSuchElementException:
-            logging.error(
-                "Send message button does not found. if you see this error please create an issue in github!")
-            raise
+        except (ElementNotInteractableException, TimeoutException) as e:
+            logging.error("Element not interactable or timeout occurred.")
+            raise WebDriverException(f"Error sending prompt to ChatGPT: {e}")
         except Exception as e:
-            # Log the exception if any step in the process fails
             logging.error(f"Failed to send prompt to ChatGPT: {e}")
-            # Raising a WebDriverException to indicate failure in sending the prompt
             raise WebDriverException(f"Error sending prompt to ChatGPT: {e}")
 
     # TODO: Rewrite the function using a package that is not autoit. Autoit is only available on windows.
@@ -429,6 +502,7 @@ class ChatGPTAutomation:
 
     #     raise WebDriverException(
     #         "File upload failed after all retry attempts.")
+    
 
     def return_chatgpt_conversation(self):
         """
