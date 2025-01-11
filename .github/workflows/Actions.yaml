@@ -18,9 +18,9 @@ jobs:
           python-version: '3.9'
       - name: Installing all necessary packages
         run: pip install -r requirements.txt
-      # - name: Running Python
-      #   run: |
-      #     python GetOpenAIQuota.py
+      - name: Running Python
+        run: |
+          python chatgpt_automation.py
       # - name: Commit and Push The Results From Python Action
       #   run: |
       #    git config --global user.name "github-actions[bot]"
