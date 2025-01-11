@@ -20,7 +20,7 @@ jobs:
         run: pip install -r requirements.txt
       - name: Running Python
         run: |
-          python chatgpt_automation.py
+          python chatgpt_automating.py
       # - name: Commit and Push The Results From Python Action
       #   run: |
       #    git config --global user.name "github-actions[bot]"
